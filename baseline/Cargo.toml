@@ -1,0 +1,12 @@
+[package]
+name = "baseline"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+otils = { path = "../otils" }
+
+[package.metadata.fortanix-sgx]
+stack-size=0x400000
+heap-size=0x100000000
+threads=9
