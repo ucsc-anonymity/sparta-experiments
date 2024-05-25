@@ -36,8 +36,10 @@ impl Omq {
     }
 
     pub fn batch_send(&mut self, sends: Vec<Send>) {
-        self.message_store
-            .extend(sends.into_iter().map(|x| <Send as Into<Request>>::into(x)));
+        let requests = sends
+            .into_iter()
+            .map(|send| <Send as Into<Request>>::into(send));
+        self.message_store.extend(requests);
     }
 
     pub fn batch_fetch(&mut self, fetches: Vec<Fetch>) -> Vec<Send> {
@@ -64,12 +66,31 @@ impl Omq {
             );
         }
 
-        otils::ofilter(&mut self.message_store[..], |r| r.should_deliver(), 8);
+        otils::ocompact(&mut self.message_store[..], |r| r.should_deliver(), 8);
         let deliver = self.message_store[0..fetch_sum].to_vec();
 
-        otils::ofilter(&mut self.message_store[..], |r| r.should_defer(), 8);
+        otils::ocompact(&mut self.message_store[..], |r| r.should_defer(), 8);
         self.message_store.truncate(final_size);
 
         deliver.into_iter().map(|x| x.into()).collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    extern crate test;
+    use test::Bencher;
+
+    #[bench]
+    fn bench_fetch(b: &mut Bencher) {
+        let mut o = Omq::new();
+        let sends: Vec<Send> = (0..0x100000)
+            .map(|x| Send::new(0, x.try_into().unwrap()))
+            .collect();
+        o.batch_send(sends);
+
+        b.iter(|| o.batch_fetch(vec![Fetch::new(0, 0x80000)]));
     }
 }

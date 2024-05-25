@@ -1,6 +1,6 @@
 use crate::omq::{Fetch, Send};
 use otils::ObliviousOps;
-use std::cmp::Ordering;
+use std::{cmp::Ordering, time::UNIX_EPOCH};
 
 pub const FETCH: u32 = 0;
 pub const SEND: u32 = 1;
@@ -47,7 +47,10 @@ impl From<Send> for Request {
             receiver: s.receiver,
             req_type: SEND,
             mark: 0,
-            volume: 0,
+            volume: std::time::SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos() as usize,
             message: s.message,
         }
     }
@@ -76,8 +79,13 @@ impl PartialOrd for Request {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         let receiver_ord = self.receiver.partial_cmp(&other.receiver);
         let type_ord = self.req_type.partial_cmp(&other.req_type);
+        let vol_ord = self.volume.partial_cmp(&other.volume);
         match receiver_ord {
-            Some(Ordering::Equal) => type_ord,
+            Some(Ordering::Equal) => match type_ord {
+                Some(Ordering::Equal) => vol_ord,
+                Some(x) => Some(x),
+                None => None,
+            },
             Some(x) => Some(x),
             None => None,
         }
