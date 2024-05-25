@@ -1,8 +1,4 @@
-#![feature(test)]
-
-mod omq;
-use crate::omq::{Fetch, Omq, Send};
-// use crate::types::{fetch::Fetch, send::Send};
+use omq::{Fetch, Omq, Send};
 
 fn main() {
     let mut o = Omq::new();

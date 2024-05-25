@@ -3,13 +3,6 @@
 version = 3
 
 [[package]]
-name = "baseline"
-version = "0.1.0"
-dependencies = [
- "omq",
-]
-
-[[package]]
 name = "cc"
 version = "1.0.98"
 source = "registry+https://github.com/rust-lang/crates.io-index"

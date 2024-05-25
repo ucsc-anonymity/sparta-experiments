@@ -1,4 +1,4 @@
-use crate::omq::{Fetch, Send};
+use crate::{Fetch, Send};
 use otils::ObliviousOps;
 use std::{cmp::Ordering, time::UNIX_EPOCH};
 

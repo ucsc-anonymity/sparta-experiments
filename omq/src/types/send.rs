@@ -1,5 +1,5 @@
 // use crate::types::Request;
-use crate::omq::Request;
+use crate::Request;
 
 #[derive(Debug)]
 pub struct Send {
