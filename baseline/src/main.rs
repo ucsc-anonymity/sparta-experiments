@@ -1,8 +1,6 @@
 mod omq;
-mod request;
-
-use crate::omq::Omq;
-use crate::request::{Fetch, Send};
+use crate::omq::{Fetch, Omq, Send};
+// use crate::types::{fetch::Fetch, send::Send};
 
 fn main() {
     let mut o = Omq::new();
@@ -10,10 +8,18 @@ fn main() {
         .rev()
         .map(|x| Send::new(x, x.try_into().unwrap()))
         .collect();
+    o.batch_send(sends);
 
-    let fetch: Vec<Fetch> = (0..3)
-        .rev()
-        .map(|x| Fetch::new(x, (x + 1).try_into().unwrap()))
-        .collect();
-    o.process_batch(sends, fetch);
+    let fetches: Vec<Fetch> = (0..3).rev().map(|x| Fetch::new(x, 2)).collect();
+
+    let deliver = o.batch_fetch(fetches);
+    for m in deliver {
+        println!("{:?}", m);
+    }
+
+    let fetches: Vec<Fetch> = (3..6).rev().map(|x| Fetch::new(x, 1)).collect();
+    let deliver = o.batch_fetch(fetches);
+    for m in deliver {
+        println!("{:?}", m);
+    }
 }

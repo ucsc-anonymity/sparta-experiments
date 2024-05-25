@@ -1,33 +1,10 @@
+use crate::omq::{Fetch, Send};
 use otils::ObliviousOps;
 use std::cmp::Ordering;
 
 pub const FETCH: u32 = 0;
 pub const SEND: u32 = 1;
 pub const DUMMY: u32 = 2;
-
-#[derive(Debug)]
-pub struct Send {
-    pub receiver: i64,
-    pub message: u64,
-}
-
-impl Send {
-    pub fn new(receiver: i64, message: u64) -> Self {
-        Send { receiver, message }
-    }
-}
-
-#[derive(Debug)]
-pub struct Fetch {
-    pub receiver: i64,
-    pub volume: usize,
-}
-
-impl Fetch {
-    pub fn new(receiver: i64, volume: usize) -> Self {
-        Fetch { receiver, volume }
-    }
-}
 
 #[derive(Debug, Clone, Copy)]
 pub struct Request {
@@ -49,6 +26,18 @@ impl Request {
                 message: 0,
             })
             .collect()
+    }
+
+    pub fn is_fetch(&self) -> bool {
+        self.req_type == FETCH
+    }
+
+    pub fn should_deliver(&self) -> bool {
+        !self.is_fetch() && self.mark == 1
+    }
+
+    pub fn should_defer(&self) -> bool {
+        self.receiver >= 0 && !self.is_fetch() && self.mark == 0 // this is also hacky
     }
 }
 
