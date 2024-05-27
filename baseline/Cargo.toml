@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 omq = { path = "../omq" }
+otils = { path = "../otils" }
 
 [package.metadata.fortanix-sgx]
 stack-size=0x400000

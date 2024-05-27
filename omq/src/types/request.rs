@@ -19,13 +19,23 @@ impl Request {
     pub fn dummies(receiver: i64, len: usize) -> Vec<Self> {
         (0..len)
             .map(|_| Request {
-                receiver: receiver,
+                receiver,
                 req_type: DUMMY,
                 mark: 0,
                 volume: 0,
                 message: 0,
             })
             .collect()
+    }
+
+    pub fn max() -> Self {
+        Request {
+            receiver: i64::MAX,
+            req_type: FETCH,
+            mark: 0,
+            volume: 0,
+            message: 0,
+        }
     }
 
     pub fn is_fetch(&self) -> bool {
@@ -37,7 +47,7 @@ impl Request {
     }
 
     pub fn should_defer(&self) -> bool {
-        self.receiver >= 0 && !self.is_fetch() && self.mark == 0 // this is also hacky
+        !self.is_fetch() && self.mark == 0
     }
 }
 
@@ -83,11 +93,9 @@ impl PartialOrd for Request {
         match receiver_ord {
             Some(Ordering::Equal) => match type_ord {
                 Some(Ordering::Equal) => vol_ord,
-                Some(x) => Some(x),
-                None => None,
+                x => x,
             },
-            Some(x) => Some(x),
-            None => None,
+            x => x,
         }
     }
 }

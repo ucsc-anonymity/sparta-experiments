@@ -9,6 +9,9 @@ pub struct Send {
 
 impl Send {
     pub fn new(receiver: i64, message: u64) -> Self {
+        if receiver == i64::MAX {
+            panic!("Key out of bounds: {}", receiver);
+        }
         Send { receiver, message }
     }
 }

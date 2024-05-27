@@ -16,6 +16,13 @@ impl Omq {
         }
     }
 
+    pub fn batch_send(&mut self, sends: Vec<Send>) {
+        let requests = sends
+            .into_iter()
+            .map(|send| <Send as Into<Request>>::into(send));
+        self.message_store.extend(requests);
+    }
+
     fn update_store(&mut self, fetches: Vec<Fetch>, fetch_sum: usize) {
         let mut size = (self.message_store.len() + fetches.len() + fetch_sum).next_power_of_two();
 
@@ -34,14 +41,7 @@ impl Omq {
                 .map(|x| <Fetch as Into<Request>>::into(x)),
         );
 
-        self.message_store.extend(Request::dummies(-1, size)); // TODO this is hacky
-    }
-
-    pub fn batch_send(&mut self, sends: Vec<Send>) {
-        let requests = sends
-            .into_iter()
-            .map(|send| <Send as Into<Request>>::into(send));
-        self.message_store.extend(requests);
+        self.message_store.extend((0..size).map(|_| Request::max()));
     }
 
     pub fn batch_fetch(&mut self, fetches: Vec<Fetch>) -> Vec<Send> {

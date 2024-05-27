@@ -6,6 +6,9 @@ pub struct Fetch {
 
 impl Fetch {
     pub fn new(receiver: i64, volume: usize) -> Self {
+        if receiver == i64::MAX {
+            panic!("Key out of bounds: {}", receiver);
+        }
         Fetch { receiver, volume }
     }
 }
