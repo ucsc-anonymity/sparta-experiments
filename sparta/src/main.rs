@@ -1,22 +1,22 @@
 mod load_balancer;
+mod omap;
+mod record;
 use load_balancer::LoadBalancer;
-use omq::{Fetch, Send};
+use omap::ObliviousMap;
+use record::Record;
 
 fn main() {
-    let mut l = LoadBalancer::new(5);
-    let sends: Vec<Send> = (0..3)
-        .map(|x| Send::new(x, x.try_into().unwrap()))
+    let mut l = LoadBalancer::new(5, 8, 4);
+    let sends: Vec<Record> = (0..3)
+        .map(|x| Record::new_send(x, x.try_into().unwrap()))
         .collect();
 
-    let fetches: Vec<Fetch> = vec![Fetch::new(0, 3)];
+    // l.batch_send(sends);
 
-    let indices = l.get_fetch_requests(fetches);
-    for i in indices.iter() {
-        println!("{:?}", i);
-    }
+    let fetches: Vec<Record> = vec![Record::new_fetch(0, 3)];
 
-    let indices = l.get_send_requests(sends);
+    let indices = l.batch_fetch(fetches);
     for i in indices.iter() {
-        println!("{:?}", i);
+        // println!("{:?}", i);
     }
 }
