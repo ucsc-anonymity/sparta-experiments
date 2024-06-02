@@ -1,18 +1,12 @@
-use crate::record::{Record, RecordType};
-use otils::ObliviousOps;
+use crate::record::{IndexRecord, Record, RecordType};
+use otils::{Max, ObliviousOps};
 use std::cmp::Ordering;
 
 struct MapRecord(Record);
 
 impl MapRecord {
-    fn dummies(len: usize) -> Vec<Self> {
-        (0..len).map(|_| MapRecord(Record::max())).collect()
-    }
-
-    fn fetch_pad(record: Record) -> Self {
-        let mut record = Self(record);
-        record.0.type_rec = RecordType::Send;
-        record
+    fn dummy_send(idx: u32) -> Self {
+        MapRecord(Record::new(0, RecordType::Dummy, 0, 0, idx))
     }
 
     fn should_deliver(&self) -> bool {
@@ -26,18 +20,24 @@ impl MapRecord {
 
 impl PartialEq for MapRecord {
     fn eq(&self, other: &Self) -> bool {
-        self.0.idx == other.0.idx && self.0.type_rec == other.0.type_rec
+        self.0.idx == other.0.idx && self.0.rec_type == other.0.rec_type
     }
 }
 
 impl PartialOrd for MapRecord {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         let idx_ord = self.0.idx.partial_cmp(&other.0.idx);
-        let type_ord = self.0.type_rec.partial_cmp(&other.0.type_rec);
+        let type_ord = self.0.rec_type.partial_cmp(&other.0.rec_type);
         match idx_ord {
             Some(Ordering::Equal) => type_ord,
             x => x,
         }
+    }
+}
+
+impl Max for MapRecord {
+    fn maximum() -> Self {
+        MapRecord(Record::new(0, RecordType::Dummy, 0, 0, u32::MAX))
     }
 }
 
@@ -62,48 +62,48 @@ impl ObliviousMap {
     }
 
     fn update_with_fetches(&mut self, requests: Vec<Record>) {
-        let mut remaining = (self.message_store.len() + 2 * requests.len()).next_power_of_two();
-        remaining -= self.message_store.len() + 2 * requests.len();
-        self.message_store.reserve(remaining);
+        self.message_store.reserve(2 * requests.len());
 
         // add padding for fetches
         self.message_store.extend(
             requests
                 .iter()
-                .map(|record| MapRecord::fetch_pad(record.clone())),
+                .map(|record| MapRecord::dummy_send(record.idx)),
         );
 
         // add fetches
         self.message_store
             .extend(requests.into_iter().map(|r| MapRecord(r)));
-
-        // add padding to next power of two
-        self.message_store.extend(MapRecord::dummies(remaining));
     }
 
-    pub fn batch_fetch(&mut self, requests: Vec<Record>) -> Vec<Record> {
-        let original_size = self.message_store.len();
+    pub fn batch_fetch(&mut self, requests: Vec<Record>) -> Vec<IndexRecord> {
+        let final_size = self.message_store.len();
         let num_requests = requests.len();
 
         self.update_with_fetches(requests);
 
-        otils::sort(&mut self.message_store[..], self.num_threads);
+        self.message_store = otils::sort(std::mem::take(&mut self.message_store), self.num_threads);
 
-        let mut prev_fetch = 0;
+        let mut prev_idx = u32::MAX;
+        let mut remaining = 0;
         for record in self.message_store.iter_mut() {
-            record.0.mark = u16::oselect(prev_fetch == 1, 1, 0);
-            prev_fetch = i32::oselect(record.0.is_fetch(), 1, 0)
+            remaining = i32::oselect(prev_idx == record.0.idx, remaining, 0);
+            record.0.mark = u16::oselect(record.0.is_fetch(), 0, u16::oselect(remaining > 0, 1, 0));
+
+            prev_idx = record.0.idx;
+            remaining += i32::oselect(record.0.is_fetch(), 1, i32::oselect(remaining > 0, -1, 0));
         }
 
         otils::compact(
             &mut self.message_store[..],
-            |record| record.should_deliver(),
+            |r| r.should_deliver(),
             self.num_threads,
         );
-        let response: Vec<Record> = self
+
+        let response: Vec<IndexRecord> = self
             .message_store
             .drain(0..num_requests)
-            .map(|r| r.0)
+            .map(|r| IndexRecord(r.0))
             .collect();
 
         otils::compact(
@@ -111,7 +111,8 @@ impl ObliviousMap {
             |record| record.should_defer(),
             self.num_threads,
         );
-        self.message_store.truncate(original_size);
+        self.message_store.truncate(final_size);
+
         response
     }
 }
