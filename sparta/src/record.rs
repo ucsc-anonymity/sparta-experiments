@@ -46,8 +46,8 @@ impl Record {
         Record::new(uid, RecordType::Send, message, 0, 0)
     }
 
-    pub fn fetch(uid: i64, message: u64) -> Self {
-        Record::new(uid, RecordType::Fetch, message, 0, 0)
+    pub fn fetch(uid: i64, volume: u64) -> Self {
+        Record::new(uid, RecordType::Fetch, volume, 0, 0)
     }
 
     pub fn is_user_store(&self) -> bool {
