@@ -1,8 +1,8 @@
 #![feature(test)]
 
-mod types;
+mod request;
 use otils::ObliviousOps;
-pub use types::{Fetch, Request, Send};
+pub use request::Request;
 
 #[derive(Debug)]
 pub struct Omq {
@@ -16,65 +16,76 @@ impl Omq {
         }
     }
 
-    pub fn batch_send(&mut self, sends: Vec<Send>) {
-        let requests = sends
-            .into_iter()
-            .map(|send| <Send as Into<Request>>::into(send));
-        self.message_store.extend(requests);
+    pub fn batch_send(&mut self, sends: Vec<Request>) {
+        for s in sends.iter() {
+            println!("{:?}", s);
+        }
+        println!();
+        self.message_store.reserve(sends.len());
+        self.message_store.extend(sends);
     }
 
-    fn update_store(&mut self, fetches: Vec<Fetch>, fetch_sum: usize) {
-        let mut size = (self.message_store.len() + fetches.len() + fetch_sum).next_power_of_two();
+    fn update_store(&mut self, fetches: Vec<Request>, fetch_sum: usize) {
+        let size = self.message_store.len() + fetches.len() + fetch_sum;
 
-        size -= self.message_store.len();
-        self.message_store.reserve(size);
+        self.message_store.reserve(size - self.message_store.len());
 
-        size -= fetch_sum + fetches.len();
         for fetch in fetches.iter() {
             self.message_store
-                .extend(Request::dummies(fetch.receiver, fetch.volume));
+                .extend(Request::dummies(fetch.uid, fetch.volume));
         }
 
-        self.message_store.extend(
-            fetches
-                .into_iter()
-                .map(|x| <Fetch as Into<Request>>::into(x)),
-        );
-
-        self.message_store.extend((0..size).map(|_| Request::max()));
+        self.message_store.extend(fetches);
     }
 
-    pub fn batch_fetch(&mut self, fetches: Vec<Fetch>) -> Vec<Send> {
+    pub fn batch_fetch(&mut self, fetches: Vec<Request>) -> Vec<Request> {
         let final_size = self.message_store.len();
         let fetch_sum = fetches.iter().fold(0, |acc, f| acc + f.volume) as usize;
         self.update_store(fetches, fetch_sum);
 
-        otils::osort(&mut self.message_store[..], 8);
+        self.message_store = otils::sort(std::mem::take(&mut self.message_store), 8);
+        println!("sorted");
+        for record in self.message_store.iter() {
+            println!("{:?}", record);
+        }
+        println!();
 
         let mut user_sum: isize = 0;
-        let mut prev_user: i64 = -1;
+        let mut prev_user: i32 = -1;
         for request in self.message_store.iter_mut() {
-            let same_user = prev_user == request.receiver;
+            let same_user = prev_user == request.uid;
             user_sum = isize::oselect(same_user, user_sum, 0);
 
             let fetch_more = user_sum > 0;
-            request.mark = u32::oselect(request.is_fetch(), 0, u32::oselect(fetch_more, 1, 0));
+            request.mark = u16::oselect(request.is_fetch(), 0, u16::oselect(fetch_more, 1, 0));
 
-            prev_user = request.receiver;
+            prev_user = request.uid;
             user_sum += isize::oselect(
                 request.is_fetch(),
                 request.volume as isize,
                 isize::oselect(fetch_more, -1, 0),
             );
         }
+        for record in self.message_store.iter() {
+            println!("{:?}", record);
+        }
+        println!();
 
-        otils::ocompact(&mut self.message_store[..], |r| r.should_deliver(), 8);
+        otils::compact(&mut self.message_store[..], |r| r.should_deliver(), 8);
         let deliver = self.message_store[0..fetch_sum].to_vec();
+        for record in deliver.iter() {
+            println!("{:?}", record);
+        }
+        println!();
 
-        otils::ocompact(&mut self.message_store[..], |r| r.should_defer(), 8);
+        otils::compact(&mut self.message_store[..], |r| r.should_defer(), 8);
         self.message_store.truncate(final_size);
+        for record in self.message_store.iter() {
+            println!("{:?}", record);
+        }
+        println!();
 
-        deliver.into_iter().map(|x| x.into()).collect()
+        deliver
     }
 }
 
@@ -88,11 +99,14 @@ mod tests {
     #[bench]
     fn bench_fetch(b: &mut Bencher) {
         let mut o = Omq::new();
-        let sends: Vec<Send> = (0..0x100000)
-            .map(|x| Send::new(0, x.try_into().unwrap()))
+
+        let sends: Vec<Request> = (0..1048576)
+            .map(|x| Request::new_send(0, x.try_into().unwrap()))
             .collect();
         o.batch_send(sends);
 
-        b.iter(|| o.batch_fetch(vec![Fetch::new(0, 0x80000)]));
+        // b.iter(|| 1 + 1);
+
+        b.iter(|| o.batch_fetch(vec![Request::new_fetch(0, 1048575)]));
     }
 }
