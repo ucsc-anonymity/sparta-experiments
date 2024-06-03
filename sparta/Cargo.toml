@@ -4,12 +4,15 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-omq = { path = "../omq" }
 otils = { path = "../otils" }
 blake3 = "1.5.1"
 fastapprox = "0.3.1"
+clap = { version = "4.5.4", features = ["derive"] }
 
 [package.metadata.fortanix-sgx]
 stack-size=0x400000
 heap-size=0x100000000
 threads=9
+
+[profile.release]
+# debug = true

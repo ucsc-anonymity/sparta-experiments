@@ -1,18 +1,15 @@
-#![feature(test)]
-
-mod request;
+use crate::request::Request;
 use otils::ObliviousOps;
-pub use request::Request;
 
 #[derive(Debug)]
-pub struct Omq {
+pub struct ObliviousMultiQueue {
     num_threads: usize,
     message_store: Vec<Request>,
 }
 
-impl Omq {
+impl ObliviousMultiQueue {
     pub fn new(num_threads: usize) -> Self {
-        Omq {
+        ObliviousMultiQueue {
             num_threads,
             message_store: Vec::new(),
         }
@@ -24,9 +21,7 @@ impl Omq {
     }
 
     fn update_store(&mut self, fetches: Vec<Request>, fetch_sum: usize) {
-        let size = self.message_store.len() + fetches.len() + fetch_sum;
-
-        self.message_store.reserve(size - self.message_store.len());
+        self.message_store.reserve(fetches.len() + fetch_sum);
 
         for fetch in fetches.iter() {
             self.message_store
@@ -65,7 +60,10 @@ impl Omq {
             |r| r.should_deliver(),
             self.num_threads,
         );
-        let deliver = self.message_store[0..fetch_sum].to_vec();
+        let deliver: Vec<Request> = self.message_store.drain(0..fetch_sum).collect();
+        // for r in deliver.iter() {
+        //     println!("{:?}", r);
+        // }
 
         otils::compact(
             &mut self.message_store[..],
@@ -73,6 +71,9 @@ impl Omq {
             self.num_threads,
         );
         self.message_store.truncate(final_size);
+        // for r in self.message_store.iter() {
+        //     println!("{:?}", r);
+        // }
 
         deliver
     }
@@ -87,7 +88,7 @@ mod tests {
 
     #[bench]
     fn bench_fetch(b: &mut Bencher) {
-        let mut o = Omq::new(8);
+        let mut o = ObliviousMultiQueue::new(8);
 
         let sends: Vec<Request> = (0..1048576)
             .map(|x| Request::new_send(0, x.try_into().unwrap()))

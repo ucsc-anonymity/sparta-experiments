@@ -6,13 +6,13 @@ pub const FETCH: u16 = 0;
 pub const SEND: u16 = 1;
 pub const DUMMY: u16 = 2;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug)]
 pub struct Request {
     pub uid: i32,
     pub req_type: u16,
     pub mark: u16,
     pub volume: usize,
-    pub message: u64,
+    pub _message: u64,
     pub _dum: [u64; 13],
 }
 
@@ -29,7 +29,7 @@ impl Request {
                 .duration_since(UNIX_EPOCH)
                 .unwrap()
                 .as_nanos() as usize,
-            message,
+            _message: message,
             _dum: [0; 13],
         }
     }
@@ -43,7 +43,7 @@ impl Request {
             req_type: FETCH,
             mark: 0,
             volume,
-            message: 0,
+            _message: 0,
             _dum: [0; 13],
         }
     }
@@ -55,7 +55,7 @@ impl Request {
                 req_type: DUMMY,
                 mark: 0,
                 volume: 0,
-                message: 0,
+                _message: 0,
                 _dum: [0; 13],
             })
             .collect()
@@ -81,7 +81,7 @@ impl Max for Request {
             req_type: DUMMY,
             mark: 0,
             volume: 0,
-            message: 0,
+            _message: 0,
             _dum: [0; 13],
         }
     }

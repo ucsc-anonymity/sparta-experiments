@@ -10,7 +10,7 @@ pub enum RecordType {
     Dummy,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Record {
     pub uid: i64,
     pub idx: u32,
@@ -23,7 +23,6 @@ pub struct Record {
     pub last_send: u32,
 
     pub data: u64,
-
     pub _dum: [u64; 12],
 }
 
@@ -63,7 +62,6 @@ impl Record {
     }
 }
 
-#[derive(Clone)]
 pub struct IndexRecord(pub Record);
 
 impl IndexRecord {

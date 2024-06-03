@@ -1,24 +1,28 @@
+NAME = sparta
+BUILD_DIR = target/x86_64-fortanix-unknown-sgx/release
+KEY = private.pem
+
+BINARY = $(BUILD_DIR)/$(NAME)
+TARGET = $(BUILD_DIR)/$(NAME).sgxs
+SIGNATURE = $(BUILD_DIR)/$(NAME).sig
+
 HEAP_SIZE = 0x100000000
 STACK_SIZE = 0x400000
 MAX_THREADS = 9
 
-BUILD_DIR = target/x86_64-fortanix-unknown-sgx/release
-
-BINARY = $(BUILD_DIR)/sparta
-TARGET = $(BUILD_DIR)/sparta.sgxs
-SIGNATURE = $(BUILD_DIR)/sparta.sig
-
-.PHONY: clean run
+.PHONY: build run clean
 
 $(TARGET): $(BINARY)
 	ftxsgx-elf2sgxs -o $(TARGET) $(BINARY) --heap-size $(HEAP_SIZE) --stack-size $(STACK_SIZE) --threads $(MAX_THREADS)
-	sgxs-sign --key private.pem $(TARGET) $(SIGNATURE)
+	sgxs-sign --key $(KEY) $(TARGET) $(SIGNATURE)
 
-$(BINARY):
+$(BINARY): build
+
+build:
 	cargo build --release
 
 run: $(TARGET)
-	ftxsgx-runner $(TARGET) 5 3 3 8 4
+	ftxsgx-runner $(TARGET) --help
 
 clean:
 	rm -rf $(BUILD_DIR)

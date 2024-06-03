@@ -77,7 +77,7 @@ impl ObliviousMap {
             .extend(requests.into_iter().map(|r| MapRecord(r)));
     }
 
-    pub fn batch_fetch(&mut self, requests: Vec<Record>, response: &mut [IndexRecord]) {
+    pub fn batch_fetch(&mut self, requests: Vec<Record>) -> Vec<IndexRecord> {
         let final_size = self.message_store.len();
         let num_requests = requests.len();
 
@@ -100,12 +100,11 @@ impl ObliviousMap {
             |r| r.should_deliver(),
             self.num_threads,
         );
-
-        for idx in 0..num_requests {
-            response[idx] = IndexRecord(self.message_store[idx].0.clone());
-        }
-
-        self.message_store.drain(0..num_requests);
+        let response = self
+            .message_store
+            .drain(0..num_requests)
+            .map(|r| IndexRecord(r.0))
+            .collect();
 
         otils::compact(
             &mut self.message_store[..],
@@ -113,5 +112,6 @@ impl ObliviousMap {
             self.num_threads,
         );
         self.message_store.truncate(final_size);
+        response
     }
 }
