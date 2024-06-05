@@ -1,9 +1,7 @@
 import os
 import subprocess
 
-SENDS = [2**i for i in range(18, 26)]
-FETCHES = 8192
-USERS = FETCHES
+SENDS = [2**i for i in range(18, 25)]
 
 THREADS = 48
 MAPS = 5
@@ -11,29 +9,27 @@ MAPS = 5
 RUNS = 10
 WARMUP = 0
 
-DATA_DIR = os.path.join(os.getcwd(), "data", "message-scaling")
+DATA_DIR = os.path.join(os.getcwd(), "data", "user-message-scaling")
 os.makedirs(DATA_DIR, exist_ok=True)
 
 SPARTA_DIR = os.path.join(os.getcwd(), "sparta")
 BASELINE_DIR = os.path.join(os.getcwd(), "baseline")
 
-BASELINE_FILE = os.path.join(DATA_DIR, f"baseline-{FETCHES}-{THREADS}.csv")
-SPARTA_FILE = os.path.join(DATA_DIR, f"sparta-{FETCHES}-{THREADS}-{MAPS}.csv")
+BASELINE_FILE = os.path.join(DATA_DIR, f"baseline-{THREADS}.csv")
+SPARTA_FILE = os.path.join(DATA_DIR, f"sparta-{THREADS}.csv")
 
 
 def sparta_cmd(sends):
-
     cmd = ["cargo", "run", "--release", "--",
-           str(sends), str(FETCHES), str(THREADS), str(USERS), str(MAPS), "-r", str(RUNS), "-w", str(WARMUP)]
+           str(sends), str(sends), str(THREADS), str(sends), str(MAPS), "-r", str(RUNS), "-w", str(WARMUP)]
     result = subprocess.run(cmd, capture_output=True,
                             text=True, cwd=SPARTA_DIR)
-    print(result.stderr)
     return result.stdout
 
 
 def baseline_cmd(sends):
     cmd = ["cargo", "run", "--release", "--",
-           str(sends), str(FETCHES), str(THREADS),  "-r", str(RUNS), "-w", str(WARMUP)]
+           str(sends), str(sends), str(THREADS), "-r", str(RUNS), "-w", str(WARMUP)]
     result = subprocess.run(cmd, capture_output=True,
                             text=True, cwd=BASELINE_DIR)
     return result.stdout

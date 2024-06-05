@@ -51,11 +51,16 @@ fn main() {
                 .duration_since(UNIX_EPOCH)
                 .unwrap()
                 .as_nanos();
-            let _ = l.batch_fetch(vec![Record::fetch(0, args.fetches)]);
+            let _responses = l.batch_fetch(vec![Record::fetch(0, args.fetches)]);
             let end = std::time::SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .unwrap()
                 .as_nanos();
+
+            // for response in responses.iter() {
+            //     println!("{:?}", response);
+            // }
+
             end - start
         })
         .collect();

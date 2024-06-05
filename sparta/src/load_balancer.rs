@@ -2,34 +2,45 @@ use crate::omap::ObliviousMap;
 pub use crate::record::{IndexRecord, Record, RecordType, SubmapRecord};
 use fastapprox::fast;
 use otils::{self, ObliviousOps};
-use std::{cmp, f64::consts::E, thread, time::UNIX_EPOCH};
+use rayon::ThreadPool;
+use std::{
+    cmp,
+    f64::consts::E,
+    sync::{Arc, Mutex},
+    time::UNIX_EPOCH,
+};
 
 const LAMBDA: usize = 128;
 
 pub struct LoadBalancer {
     num_users: i64,
-    num_threads: usize,
     num_submaps: usize,
 
+    pool: ThreadPool,
     pub user_store: Vec<IndexRecord>,
     pub submaps: Vec<ObliviousMap>,
 }
 
 impl LoadBalancer {
     pub fn new(num_users: i64, num_threads: usize, num_submaps: usize) -> Self {
+        let pool = rayon::ThreadPoolBuilder::new()
+            .num_threads(num_threads / (num_submaps + 1))
+            .build()
+            .unwrap();
+
         let mut user_store = Vec::new();
         user_store.reserve(num_users as usize);
         user_store.extend((0..num_users).map(|i| IndexRecord::new(i, RecordType::User)));
 
         let mut submaps = Vec::with_capacity(num_submaps as usize);
         submaps.extend(
-            (0..num_submaps).map(|_| ObliviousMap::new(num_threads / num_submaps as usize)),
+            (0..num_submaps).map(|_| ObliviousMap::new(num_threads / (num_submaps + 1) as usize)),
         );
 
         LoadBalancer {
             num_users,
-            num_threads,
             num_submaps,
+            pool,
             user_store,
             submaps,
         }
@@ -73,7 +84,7 @@ impl LoadBalancer {
 
         let mut requests = self.pad_for_submap(requests, submap_size, is_send);
 
-        requests = otils::sort(requests, self.num_threads); // sort by omap, then by dummy
+        requests = otils::sort(requests, &self.pool); // sort by omap, then by dummy
 
         let mut prev_map = self.num_submaps;
         let mut remaining_marks = submap_size as i32;
@@ -89,7 +100,7 @@ impl LoadBalancer {
             prev_map = submap as usize;
         }
 
-        otils::compact(&mut requests[..], |r| r.0.mark == 1, self.num_threads);
+        otils::compact(&mut requests[..], |r| r.0.mark == 1, &self.pool);
         requests.truncate(self.num_submaps * submap_size);
         requests
     }
@@ -126,20 +137,16 @@ impl LoadBalancer {
         self.user_store.reserve(num_requests);
         self.user_store.extend(sends);
 
-        self.user_store = otils::sort(std::mem::take(&mut self.user_store), self.num_threads);
+        self.user_store = otils::sort(std::mem::take(&mut self.user_store), &self.pool);
         self.propagate_send_indices();
 
-        otils::compact(
-            &mut self.user_store[..],
-            |r| r.is_request(),
-            self.num_threads,
-        );
+        otils::compact(&mut self.user_store[..], |r| r.is_request(), &self.pool);
         let requests = self.user_store.drain(0..num_requests).collect();
 
         otils::compact(
             &mut self.user_store[..],
             |r| r.is_updated_user_store(),
-            self.num_threads,
+            &self.pool,
         );
 
         self.user_store.truncate(self.num_users as usize);
@@ -162,24 +169,21 @@ impl LoadBalancer {
 
         let mut remaining_submaps = &mut self.submaps[..];
 
-        thread::scope(|s| {
-            for _ in 0..self.num_submaps - 1 {
+        self.pool.scope(|s| {
+            for _ in 0..self.num_submaps {
                 let (submap, rest_submaps) = remaining_submaps.split_at_mut(1);
                 remaining_submaps = rest_submaps;
 
                 let batch = requests.drain(0..submap_size).collect();
-                s.spawn(|| submap[0].batch_send(batch));
+                s.spawn(|_| submap[0].batch_send(batch));
             }
 
-            let (submap, rest_submaps) = remaining_submaps.split_at_mut(1);
-            remaining_submaps = rest_submaps;
+            // let (submap, rest_submaps) = remaining_submaps.split_at_mut(1);
+            // remaining_submaps = rest_submaps;
 
-            let batch = requests.drain(0..submap_size).collect();
-            submap[0].batch_send(batch);
+            // let batch = requests.drain(0..submap_size).collect();
+            // submap[0].batch_send(batch);
         });
-
-        // parallelize
-        for _ in 0..self.num_submaps {}
     }
 
     fn update_with_fetches(&mut self, fetches: Vec<IndexRecord>, num_fetches: usize) {
@@ -219,20 +223,16 @@ impl LoadBalancer {
     ) -> Vec<IndexRecord> {
         self.update_with_fetches(fetches, num_requests);
 
-        self.user_store = otils::sort(std::mem::take(&mut self.user_store), self.num_threads);
+        self.user_store = otils::sort(std::mem::take(&mut self.user_store), &self.pool);
         self.propagate_fetch_indices();
 
-        otils::compact(
-            &mut self.user_store[..],
-            |r| r.is_request(),
-            self.num_threads,
-        );
+        otils::compact(&mut self.user_store[..], |r| r.is_request(), &self.pool);
         let deliver = self.user_store.drain(0..num_requests).collect();
 
         otils::compact(
             &mut self.user_store[..],
             |r| r.is_updated_user_store(),
-            self.num_threads,
+            &self.pool,
         );
 
         self.user_store.truncate(self.num_users as usize);
@@ -278,33 +278,31 @@ impl LoadBalancer {
         // println!("submap requests {}: {}", requests.len(), end - start);
 
         let mut remaining_submaps = &mut self.submaps[..];
-        let mut responses: Vec<IndexRecord> = Vec::with_capacity(submap_size * self.num_submaps);
+        let responses: Arc<Mutex<Vec<IndexRecord>>> = Arc::new(Mutex::new(Vec::with_capacity(
+            submap_size * self.num_submaps,
+        )));
 
         // let start = std::time::SystemTime::now()
         //     .duration_since(UNIX_EPOCH)
         //     .unwrap()
         //     .as_nanos();
-        thread::scope(|s| {
-            let mut handles = Vec::new();
-            for _ in 0..self.num_submaps - 1 {
+        self.pool.scope(|s| {
+            for _ in 0..self.num_submaps {
                 let (submap, rest_submaps) = remaining_submaps.split_at_mut(1);
                 remaining_submaps = rest_submaps;
                 let batch = requests.drain(0..submap_size).collect();
 
-                handles.push(s.spawn(|| submap[0].batch_fetch(batch)));
-            }
-
-            let (submap, rest_submaps) = remaining_submaps.split_at_mut(1);
-            remaining_submaps = rest_submaps;
-            let batch = requests.drain(0..submap_size).collect();
-
-            let response = submap[0].batch_fetch(batch);
-
-            responses.extend(response);
-            for handle in handles.into_iter() {
-                responses.extend(handle.join().unwrap());
+                s.spawn(|_| {
+                    let responses = Arc::clone(&responses);
+                    let response = submap[0].batch_fetch(batch);
+                    let mut responses = responses.lock().unwrap();
+                    responses.extend(response);
+                });
             }
         });
+
+        let mutex = Arc::into_inner(responses).unwrap();
+        let mut responses: Vec<IndexRecord> = mutex.into_inner().unwrap();
         // let end = std::time::SystemTime::now()
         //     .duration_since(UNIX_EPOCH)
         //     .unwrap()
@@ -316,8 +314,8 @@ impl LoadBalancer {
         //     .duration_since(UNIX_EPOCH)
         //     .unwrap()
         //     .as_nanos();
-        responses = otils::sort(responses, self.num_threads);
-        otils::compact(&mut responses, |r| r.0.is_send(), self.num_threads);
+        responses = otils::sort(responses, &self.pool);
+        otils::compact(&mut responses, |r| r.0.is_send(), &self.pool);
         // let end = std::time::SystemTime::now()
         //     .duration_since(UNIX_EPOCH)
         //     .unwrap()

@@ -1,5 +1,6 @@
 use crate::record::{IndexRecord, Record, RecordType};
 use otils::{Max, ObliviousOps};
+use rayon::ThreadPool;
 use std::cmp::Ordering;
 
 struct MapRecord(Record);
@@ -41,22 +42,27 @@ impl Max for MapRecord {
     }
 }
 
-#[derive(Default)]
 pub struct ObliviousMap {
-    num_threads: usize,
+    pool: ThreadPool,
     message_store: Vec<MapRecord>,
 }
 
 impl ObliviousMap {
     pub fn new(num_threads: usize) -> Self {
+        let pool = rayon::ThreadPoolBuilder::new()
+            .num_threads(num_threads)
+            .build()
+            .unwrap();
+
         let message_store = Vec::new();
         ObliviousMap {
-            num_threads,
+            pool,
             message_store,
         }
     }
 
     pub fn batch_send(&mut self, requests: Vec<Record>) {
+        // println!("num sends {}", requests.len());
         self.message_store.reserve(requests.len());
         self.message_store
             .extend(requests.into_iter().map(|r| MapRecord(r)));
@@ -78,12 +84,14 @@ impl ObliviousMap {
     }
 
     pub fn batch_fetch(&mut self, requests: Vec<Record>) -> Vec<IndexRecord> {
+        // println!("num fetches {}", requests.len());
+
         let final_size = self.message_store.len();
         let num_requests = requests.len();
 
         self.update_with_fetches(requests);
 
-        self.message_store = otils::sort(std::mem::take(&mut self.message_store), self.num_threads);
+        self.message_store = otils::sort(std::mem::take(&mut self.message_store), &self.pool);
 
         let mut prev_idx = u32::MAX;
         let mut remaining = 0;
@@ -98,7 +106,7 @@ impl ObliviousMap {
         otils::compact(
             &mut self.message_store[..],
             |r| r.should_deliver(),
-            self.num_threads,
+            &self.pool,
         );
         let response = self
             .message_store
@@ -109,7 +117,7 @@ impl ObliviousMap {
         otils::compact(
             &mut self.message_store[..],
             |record| record.should_defer(),
-            self.num_threads,
+            &self.pool,
         );
         self.message_store.truncate(final_size);
         response

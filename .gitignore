@@ -1,4 +1,4 @@
 target/
 data/
 *.svg
-/*.perf*
+perf.*
