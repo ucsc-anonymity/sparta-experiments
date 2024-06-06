@@ -43,28 +43,17 @@ impl Max for MapRecord {
 }
 
 pub struct ObliviousMap {
-    num_threads: usize,
-    pool: ThreadPool,
     message_store: Vec<MapRecord>,
 }
 
 impl ObliviousMap {
-    pub fn new(num_threads: usize) -> Self {
-        let pool = rayon::ThreadPoolBuilder::new()
-            .num_threads(num_threads)
-            .build()
-            .unwrap();
-
-        let message_store = Vec::new();
+    pub fn new() -> Self {
         ObliviousMap {
-            num_threads,
-            pool,
-            message_store,
+            message_store: Vec::new(),
         }
     }
 
     pub fn batch_send(&mut self, requests: Vec<Record>) {
-        // println!("num sends {}", requests.len());
         self.message_store.reserve(requests.len());
         self.message_store
             .extend(requests.into_iter().map(|r| MapRecord(r)));
@@ -85,7 +74,12 @@ impl ObliviousMap {
             .extend(requests.into_iter().map(|r| MapRecord(r)));
     }
 
-    pub fn batch_fetch(&mut self, requests: Vec<Record>) -> Vec<IndexRecord> {
+    pub fn batch_fetch(
+        &mut self,
+        requests: Vec<Record>,
+        pool: &ThreadPool,
+        num_threads: usize,
+    ) -> Vec<IndexRecord> {
         // println!("num fetches {}", requests.len());
 
         let final_size = self.message_store.len();
@@ -93,11 +87,8 @@ impl ObliviousMap {
 
         self.update_with_fetches(requests);
 
-        self.message_store = otils::sort(
-            std::mem::take(&mut self.message_store),
-            &self.pool,
-            self.num_threads,
-        );
+        self.message_store =
+            otils::sort(std::mem::take(&mut self.message_store), pool, num_threads);
 
         let mut prev_idx = u32::MAX;
         let mut remaining = 0;
@@ -111,9 +102,9 @@ impl ObliviousMap {
 
         otils::compact(
             &mut self.message_store[..],
-            |r| r.should_deliver(),
-            &self.pool,
-            self.num_threads,
+            |record| record.should_deliver(),
+            pool,
+            num_threads,
         );
         let response = self
             .message_store
@@ -124,8 +115,8 @@ impl ObliviousMap {
         otils::compact(
             &mut self.message_store[..],
             |record| record.should_defer(),
-            &self.pool,
-            self.num_threads,
+            pool,
+            num_threads,
         );
         self.message_store.truncate(final_size);
         response

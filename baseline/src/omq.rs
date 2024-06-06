@@ -4,6 +4,7 @@ use rayon::ThreadPool;
 
 #[derive(Debug)]
 pub struct ObliviousMultiQueue {
+    num_threads: usize,
     pool: ThreadPool,
     message_store: Vec<Request>,
 }
@@ -15,6 +16,7 @@ impl ObliviousMultiQueue {
             .build()
             .unwrap();
         ObliviousMultiQueue {
+            num_threads,
             pool,
             message_store: Vec::new(),
         }
@@ -41,7 +43,11 @@ impl ObliviousMultiQueue {
         let fetch_sum = fetches.iter().fold(0, |acc, f| acc + f.volume) as usize;
         self.update_store(fetches, fetch_sum);
 
-        self.message_store = otils::sort(std::mem::take(&mut self.message_store), &self.pool);
+        self.message_store = otils::sort(
+            std::mem::take(&mut self.message_store),
+            &self.pool,
+            self.num_threads,
+        );
 
         let mut user_sum: isize = 0;
         let mut prev_user: i32 = -1;
@@ -64,6 +70,7 @@ impl ObliviousMultiQueue {
             &mut self.message_store[..],
             |r| r.should_deliver(),
             &self.pool,
+            self.num_threads,
         );
         let deliver: Vec<Request> = self.message_store.drain(0..fetch_sum).collect();
         // for r in deliver.iter() {
@@ -74,6 +81,7 @@ impl ObliviousMultiQueue {
             &mut self.message_store[..],
             |r| r.should_defer(),
             &self.pool,
+            self.num_threads,
         );
         self.message_store.truncate(final_size);
         // for r in self.message_store.iter() {

@@ -7,6 +7,9 @@ use load_balancer::LoadBalancer;
 use record::Record;
 use std::time::UNIX_EPOCH;
 
+const RTT: f64 = 0.160; // 160ms
+const BPS: f64 = 125000000.0; //bytes per second
+
 /// Baseline oblivious sort based multiqueue.
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -44,6 +47,7 @@ fn main() {
         .collect();
 
     l.batch_send(sends);
+    let mut net_size = 0;
 
     let results: Vec<f64> = (0..(args.runs + args.warmup_runs))
         .map(|_| {
@@ -51,7 +55,8 @@ fn main() {
                 .duration_since(UNIX_EPOCH)
                 .unwrap()
                 .as_secs_f64();
-            let _responses = l.batch_fetch(vec![Record::fetch(0, args.fetches)]);
+            let (_responses, ns) = l.batch_fetch(vec![Record::fetch(0, args.fetches)]);
+            net_size = ns;
             let end = std::time::SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .unwrap()
@@ -61,13 +66,17 @@ fn main() {
             //     println!("{:?}", response);
             // }
 
-            end - start
+            end - start + RTT + ((net_size * std::mem::size_of::<Record>() * 2) as f64 / BPS)
         })
         .collect();
 
     print!("{}\t", args.sends);
     for result in results[..].iter() {
-        print!("{}\t", *result);
+        print!(
+            "{}\t",
+            *result,
+            // *result - RTT - ((net_size * std::mem::size_of::<Record>() * 2) as f64 / BPS)
+        );
     }
     println!();
 }
