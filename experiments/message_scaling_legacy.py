@@ -1,6 +1,8 @@
 import os
 import subprocess
 
+# done
+
 SENDS = [2**i for i in range(21, 25)]
 
 THREADS = 48

@@ -1,8 +1,8 @@
 import os
 import subprocess
 
-SENDS = 2**22
-USERS = 2**17
+SENDS = 2**20
+USERS = 2**13
 
 THREADS = 48
 D_MAPS = 15
@@ -10,7 +10,7 @@ D_MAPS = 15
 RUNS = 10
 WARMUP = 0
 
-DATA_DIR = os.path.join(os.getcwd(), "data", "d-scaling")
+DATA_DIR = os.path.join(os.getcwd(), "data", "d-scaling-store")
 os.makedirs(DATA_DIR, exist_ok=True)
 
 SPARTA_D_DIR = os.path.join(os.getcwd(), "sparta-d")
