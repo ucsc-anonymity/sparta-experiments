@@ -1,3 +1,4 @@
 [submodule "otils"]
 	path = otils
-	url = git@github.com:kylebfredrickson/otils.git
+	url = https://github.com/kylebfredrickson/otils.git
+	branch = main
